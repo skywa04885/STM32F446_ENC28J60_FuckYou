@@ -6,6 +6,8 @@
  *********************************************/
 
 #include <string.h>
+#include <stdbool.h>
+#include <stdio.h>
 
 /*********************************************
  * Project Headers
@@ -14,11 +16,18 @@
 #include "../../hardware/spi.h"
 #include "../../hardware/gpio.h"
 #include "../../hardware/rcc.h"
-#include "../ethernet.h"
+#include "../../hardware/systick.h"
 #include "../../types.h"
+
+#include "../checksum.h"
 #include "../bswap.h"
 
 #include "enc28j60_registers.h"
+
+#include "../ethernet.h"
+#include "../arp.h"
+#include "../udp.h"
+#include "../ip.h"
 
 /*********************************************
  * Data Types
@@ -50,10 +59,16 @@ typedef struct
 	u16 tx_buff_start, rx_buff_end;
 	/* Addresses */
 	u8 mac[6];
-	u8 ipv4[4];
+	u8 ipv4[4], ipv6[16];
 	/* Options */
 	unsigned full_duplex : 1;
 } enc28j60_config_t;
+
+typedef struct __attribute__ (( packed ))
+{
+	u16 rbc;
+	u16 flags;
+} enc28j60_status_vector_t;
 
 typedef struct __attribute__ (( packed ))
 {
@@ -99,6 +114,7 @@ void 		enc28j60_mac_wait_until_clear(u8 reg, u8 bit);
 void		enc28j60_src(void);
 
 void		enc28j60_set_wbm_address(u16 address);
+void		enc28j60_set_rbm_address(u16 address);
 
 /*********************************************
  * ENC28J60 Default Functions
@@ -115,6 +131,9 @@ void		enc28j60_mac_read(u8 *mac);
 void		enc28j60_leda_mode(enc28j60_phlcon_lcfg_t mode);
 void		enc28j60_ledb_mode(enc28j60_phlcon_lcfg_t mode);
 
+void		enc28j60_rx_enable(void);
+void		enc28j60_rx_disable(void);
+
 /*********************************************
  * ENC28J60 Initialization
  *********************************************/
@@ -129,8 +148,33 @@ void 		enc28j60_mac_init(void);
  * ENC28J60 Networking
  *********************************************/
 
+u8			enc28j60_packet_count(void);
 void		enc28j60_pkt_prepare(enc28j60_pkt_t *pkt, uint8_t *da, u16 type);
 void		enc28j60_write(const enc28j60_pkt_t *pkt, u16 len);
-void		enc28j60_read(enc28j60_pkt_t *pkt);
+bool		enc28j60_read(enc28j60_pkt_t *pkt);
+void 		enc28j60_poll(u8 *buffer);
+
+/*********************************************
+ * ENC28J60 Networking ( ARP )
+ *********************************************/
+
+void 		enc28j60_handle_arp(enc28j60_pkt_t *pkt);
+void 		enc28j60_handle_arp_reply(enc28j60_pkt_t *pkt);
+void 		enc28j60_handle_arp_request(enc28j60_pkt_t *pkt);
+
+/*********************************************
+ * ENC28J60 Networking ( IP )
+ *********************************************/
+
+void		enc28j60_ipv4_prepare(ip_pkt_t *ip_pkt, u8 *ipv4);
+void 		enc28j60_ipv4_finish(ip_pkt_t *ip_pkt);
+void		enc28j60_handle_ipv4(enc28j60_pkt_t *pkt);
+
+/*********************************************
+ * ENC28J60 Networking ( UDP )
+ *********************************************/
+
+void 		enc28j60_ipv4_udp_prepare(ip_pkt_t *ip_pkt, udp_pkt_t *udp_pkt, u16 port, const u8 *data, u16 l);
+void		enc28j60_handle_ipv4_udp(enc28j60_pkt_t *pkt);
 
 #endif

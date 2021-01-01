@@ -5,6 +5,9 @@
  * ENC28J60 Bank 0 Registers
  *********************************************/
 
+#define ENC28J60_BK0_ERDPTL			0x00
+#define ENC28J60_BK0_ERDPTH			0x01
+
 #define ENC28J60_BK0_EWRPTL			0x02
 #define ENC28J60_BK0_EWRPTH			0x03
 
@@ -25,6 +28,12 @@
 
 #define ENC28J60_BK0_ERXWRPTL		0x0E
 #define ENC28J60_BK0_ERXWRPTH		0x0F
+
+/*********************************************
+ * ENC28J60 Bank 1 Registers
+ *********************************************/
+
+#define ENC28J60_BK1_EPKTCNT			0x19
 
 /*********************************************
  * ENC28J60 Bank 2 Registers
@@ -63,10 +72,10 @@
 #define ENC28J60_BK2_MIRDL			0x18
 #define ENC28J60_BK2_MIRDH			0x19
 
-#define ENC28J60_BK2_MAMXFLL		0x0A
-#define ENC28J60_BK2_MAMXFLH		0x0B
+#define ENC28J60_BK2_MAMXFLL			0x0A
+#define ENC28J60_BK2_MAMXFLH			0x0B
 
-#define ENC28J60_BK2_MABBIPG		0x04
+#define ENC28J60_BK2_MABBIPG			0x04
 
 #define ENC28J60_BK2_MAIPGL			0x06
 #define ENC28J60_BK2_MAIPGH			0x07
@@ -83,8 +92,8 @@
 #define ENC28J60_BK3_MAADR2			0x05
 
 #define ENC28J60_BK3_MISTAT			0x0A
-#define ENC28J60_BK3_MISTAT_BUSY	0
-#define ENC28J60_BK3_MISTAT_SCAN	1
+#define ENC28J60_BK3_MISTAT_BUSY		0
+#define ENC28J60_BK3_MISTAT_SCAN		1
 #define ENC28J60_BK3_MISTAT_NVALID	2
 
 /*********************************************
@@ -93,11 +102,11 @@
 
 #define ENC28J60_ECON1				0x1F
 
-#define ENC28J60_ECON1_TXRST		7
-#define ENC28J60_ECON1_RXRST		6
-#define ENC28J60_ECON1_DMAST		5
+#define ENC28J60_ECON1_TXRST			7
+#define ENC28J60_ECON1_RXRST			6
+#define ENC28J60_ECON1_DMAST			5
 #define ENC28J60_ECON1_CSUMEN		4
-#define ENC28J60_ECON1_TXRTS		3
+#define ENC28J60_ECON1_TXRTS			3
 #define ENC28J60_ECON1_RXEN			2
 #define ENC28J60_ECON1_BSEL_SHIFT	0
 
@@ -105,7 +114,7 @@
 
 #define ENC28J60_ECON2_AUTOINC		7
 #define ENC28J60_ECON2_PKTDEC		6
-#define ENC28J60_ECON2_PWRSV		5
+#define ENC28J60_ECON2_PWRSV			5
 #define ENC28J60_ECON2_VRPS			3
 
 #define ENC28J60_ESTAT				0x1D
@@ -117,7 +126,7 @@
 #define ENC28J60_ESTAT_TXABRT		1
 #define ENC28J60_ESTAT_CLKRDY		0
 
-#define ENC28J60_EIR				0x1C
+#define ENC28J60_EIR					0x1C
 
 #define ENC28J60_EIR_PKTIF			6
 #define ENC28J60_EIR_DMAIF			5
