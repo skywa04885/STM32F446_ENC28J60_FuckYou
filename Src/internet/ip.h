@@ -11,6 +11,7 @@
  * Data Types
  *********************************************/
 
+#define IP_HDR_PROTO_ICMP					1
 #define IP_HDR_PROTO_UDP						17
 #define IP_HDR_PROTO_TCP						6
 

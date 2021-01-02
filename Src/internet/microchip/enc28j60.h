@@ -16,11 +16,12 @@
 #include "../../hardware/spi.h"
 #include "../../hardware/gpio.h"
 #include "../../hardware/rcc.h"
-#include "../../hardware/systick.h"
+#include "../../hardware/timers.h"
 #include "../../types.h"
 
 #include "../checksum.h"
 #include "../bswap.h"
+#include "../manager.h"
 
 #include "enc28j60_registers.h"
 
@@ -28,6 +29,7 @@
 #include "../arp.h"
 #include "../udp.h"
 #include "../ip.h"
+#include "../icmp.h"
 
 /*********************************************
  * Data Types
@@ -52,18 +54,6 @@ typedef enum
 	ENC28J60_BANK_3
 } enc28j60_bank_t;
 
-typedef struct
-{
-	/* Hardware Configuration */
-	u16 max_frame_length;
-	u16 tx_buff_start, rx_buff_end;
-	/* Addresses */
-	u8 mac[6];
-	u8 ipv4[4], ipv6[16];
-	/* Options */
-	unsigned full_duplex : 1;
-} enc28j60_config_t;
-
 typedef struct __attribute__ (( packed ))
 {
 	u16 rbc;
@@ -75,12 +65,6 @@ typedef struct __attribute__ (( packed ))
 	u8 cb;
 	ethernet_pkt_t eth_pkt;
 } enc28j60_pkt_t;
-
-/*********************************************
- * ENC28J60 Static Functions
- *********************************************/
-
-enc28j60_config_t *enc28j60_get_config();
 
 /*********************************************
  * ENC28J60 SPI
@@ -134,6 +118,8 @@ void		enc28j60_ledb_mode(enc28j60_phlcon_lcfg_t mode);
 void		enc28j60_rx_enable(void);
 void		enc28j60_rx_disable(void);
 
+bool		enc28j60_is_link_up(void);
+
 /*********************************************
  * ENC28J60 Initialization
  *********************************************/
@@ -171,10 +157,16 @@ void 		enc28j60_ipv4_finish(ip_pkt_t *ip_pkt);
 void		enc28j60_handle_ipv4(enc28j60_pkt_t *pkt);
 
 /*********************************************
+ * ENC28J60 Networking ( ICMP )
+ *********************************************/
+
+void		enc28j60_handle_icmp_ipv4(enc28j60_pkt_t *pkt);
+
+/*********************************************
  * ENC28J60 Networking ( UDP )
  *********************************************/
 
-void 		enc28j60_ipv4_udp_prepare(ip_pkt_t *ip_pkt, udp_pkt_t *udp_pkt, u16 port, const u8 *data, u16 l);
+void 		enc28j60_ipv4_udp_prepare(ip_pkt_t *ip_pkt, udp_pkt_t *udp_pkt, u16 port);
 void		enc28j60_handle_ipv4_udp(enc28j60_pkt_t *pkt);
 
 #endif
