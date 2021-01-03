@@ -16,6 +16,7 @@
 #include "../types.h"
 #include "../logger.h"
 #include "bootp.h"
+#include "packet-builder.h"
 
 #include "microchip/enc28j60.h"
 
@@ -46,9 +47,11 @@ typedef struct
 	/* Hardware Configuration */
 	u16 max_frame_length;
 	u16 tx_buff_start, rx_buff_end;
-	/* Addresses */
+	/* Configuration */
 	u8 mac[6];
-	u8 ipv4[4];
+	u8 ipv4_address[4], ipv4_subnet_mask[4];
+	/* Servers */
+	u8 ipv4_dns_server[4], ipv4_dhcp_server[4], ipv4_router[4];
 	/* Options */
 	unsigned full_duplex : 1;
 	unsigned ready : 1;

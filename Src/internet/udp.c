@@ -2,7 +2,7 @@
 
 u16 udp_calc_cs(const udp_pkt_t *udp_pkt, const u8 *da, const u8 *sa, u8 sal, u8 dal, u8 proto)
 {
-	u16 sum, *p;
+	u16 sum = 0x0000, *p;
 
 	// Adds the pseudo header to the sum
 

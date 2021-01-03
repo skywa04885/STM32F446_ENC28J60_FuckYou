@@ -8,6 +8,7 @@
 #include "clock_init.h"
 
 u8 buffer[4096];
+u8 write_buffer[4096];
 
 static u8 dest[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 

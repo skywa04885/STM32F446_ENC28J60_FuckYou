@@ -1,6 +1,7 @@
 #include "manager.h"
 
 extern u8 buffer[];
+extern u8 write_buffer[];
 
 static u8 broadcast[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }; /* May be used for IPv4 and MAC */
 static u8 dhcp_cookie[4] = { 99, 130, 83, 99 };
@@ -12,10 +13,90 @@ manager_config_t config = {
 		.rx_buff_end = 4096,
 		.tx_buff_start = 4098,
 		.mac = { 0xAA, 0xAA, 0xA4, 0x52, 0x37, 0x3C },
-		.ipv4 = { 0xFF, 0xFF, 0xFF, 0xFF },
+		.ipv4_address = { 0xFF, 0xFF, 0xFF, 0xFF },
 		.full_duplex = 1,
 		.ready = 0
 };
+
+void manager_send_dhcp_request(u8 *dhcp_server, u8 *addr)
+{
+	enc28j60_pkt_t *resp_pkt = (enc28j60_pkt_t *) write_buffer;
+	ethernet_pkt_t *eth_resp_pkt = (ethernet_pkt_t *) &resp_pkt->eth_pkt;
+	ip_pkt_t *ip_resp_pkt = (ip_pkt_t *) eth_resp_pkt->payload;
+
+	// Prepares the BOOTP packet
+	bootp_pkt_t *bootp_resp_pkt = pkt_builder_bootp((u8 *) &resp_pkt->eth_pkt, broadcast,
+			broadcast, BOOTP_OPCODE_BOOTREQUEST, 60,
+			_BV(BOOTP_FLAG_BROADCAST));
+
+	// Sets the options, such as the message type, end and the addresses
+	bootp_oparam_t *param = bootp_init_dhcp_options(bootp_resp_pkt);
+	param = bootp_oparam_add_u8(BOOTP_OPTION_CODE_DHCP_MESSAGE_TYPE, DHCP_MESSAGE_TYPE_DHCPREQUEST, param);
+	param = bootp_oparam_add_addr(BOOTP_OPTION_CODE_DHCP_SERVER_ID, dhcp_server, param);
+	param = bootp_oparam_add_addr(BOOTP_OPTION_CODE_DHCP_REQUESTED_IP_ADDR, addr, param);
+	param = bootp_oparam_end(param);
+
+	// Finishes the BOOTP packet, writes it to the Ethernet module
+	//  and update the DHCP state
+	pkt_builder_bootp_finish(ip_resp_pkt, param);
+	enc28j60_write(resp_pkt, BSWAP16(ip_resp_pkt->hdr.tl));
+	config.dhcp_state = MANAGER_DHCP_STATE_REQUEST;
+}
+
+void manager_handle_dhcp(enc28j60_pkt_t *pkt)
+{
+	ip_pkt_t *ip_pkt = (ip_pkt_t *) pkt->eth_pkt.payload;
+	ip_ipv4_body_t *ip_ipv4 = (ip_ipv4_body_t *) ip_pkt->payload;
+	udp_pkt_t *udp_pkt = (udp_pkt_t *) ip_ipv4->payload;
+	bootp_pkt_t *bootp_pkt = (bootp_pkt_t *) udp_pkt->payload;
+
+	if (config.dhcp_state == MANAGER_DHCP_STATE_DISCOVER)
+	{
+		// Parses the given parameters, and sets the configuration variables if already
+		//  possible, since the IPv4 one needs to wait for the ACK
+		bootp_oparam_t *param = bootp_oparam_parser_init_dhcp(bootp_pkt);
+
+		do
+		{
+			switch (param->code)
+			{
+			case BOOTP_OPTION_CODE_SUBNET_MASK:
+				memcpy(config.ipv4_subnet_mask, ((bootp_oparam_addr_t *) param->body)->addr, 4);
+				break;
+			case BOOTP_OPTION_CODE_DHCP_SERVER_ID:
+				memcpy(config.ipv4_dhcp_server, ((bootp_oparam_addr_t *) param->body)->addr, 4);
+				break;
+			case BOOTP_OPTION_CODE_DNS_SERVER:
+				memcpy(config.ipv4_dns_server, ((bootp_oparam_addr_t *) param->body)->addr, 4);
+				break;
+			case BOOTP_OPTION_CODE_ROUTER_OPTION:
+				memcpy(config.ipv4_router, ((bootp_oparam_addr_t *) param->body)->addr, 4);
+				break;
+			default: break;
+			}
+		} while ((param = bootp_oparam_parser_next(param)) != NULL);
+
+		// Sends the DHCP Request
+		manager_send_dhcp_request(config.ipv4_dhcp_server, bootp_pkt->body.yiaddr);
+	} else if (config.dhcp_state == MANAGER_DHCP_STATE_REQUEST)
+	{
+		// Loops over the parameters, and checks if it is NACK or ACK
+		bootp_oparam_t *param = bootp_oparam_parser_init_dhcp(bootp_pkt);
+
+		do
+		{
+		} while ((param = bootp_oparam_parser_next(param)) != NULL);
+
+
+		//		// Prints the network information to the serial console
+		//		LOGGER_INFO(
+		//				label, "DHCP IPv4: %u.%u.%u.%u,\n\tSubnet: %u.%u.%u.%u,\n\tDNS: %u.%u.%u.%u\n",
+		//				config.ipv4_address[0], config.ipv4_address[1], config.ipv4_address[2], config.ipv4_address[3],
+		//				config.ipv4_subnet_mask[0], config.ipv4_subnet_mask[1], config.ipv4_subnet_mask[2], config.ipv4_subnet_mask[3],
+		//				config.ipv4_dns_server[0], config.ipv4_dns_server[1], config.ipv4_dns_server[2], config.ipv4_dns_server[3]
+		//		);
+	}
+}
 
 extern void udp_packet_callback(enc28j60_pkt_t *pkt)
 {
@@ -27,79 +108,19 @@ extern void udp_packet_callback(enc28j60_pkt_t *pkt)
 	{
 		case 68:
 		{
+			// Checks if we should do anything with the request
 			if (config.ready) return;
-			bootp_pkt_t *bootp_pkt = (bootp_pkt_t *) udp_pkt->payload;
 
-			// Checks if the BOOTP Packet is DHCP
+			// Reads the packet as if it is a BOOTP one, and checks if
+			//  it contains the 'magic cookie', and no.. It's not weed!
+			bootp_pkt_t *bootp_pkt = (bootp_pkt_t *) udp_pkt->payload;
 			if (memcmp(bootp_pkt->body.payload, dhcp_cookie, 4) != 0) return;
 
-			LOGGER_INFO(label, "BOOTP/DHCP Responded\n");
-
-			switch (config.dhcp_state)
-			{
-				case MANAGER_DHCP_STATE_DISCOVER:
-				{
-					LOGGER_INFO(label, "DHCP Offers: %u.%u.%u.%u, requesting ..\n",
-							bootp_pkt->body.yiaddr[0],
-							bootp_pkt->body.yiaddr[1],
-							bootp_pkt->body.yiaddr[2],
-							bootp_pkt->body.yiaddr[3]);
-
-					// Parses the options
-					bootp_oparam_t *param = (bootp_oparam_t *) (bootp_pkt->body.payload + 4);
-
-					u8 c = 0;
-					while (param->code != BOOTP_OPTION_CODE_END || c++ >= 255)
-					{
-						if (param->code == BOOTP_OPTION_CODE_PAD)
-						{
-							++param;
-							continue;
-						}
-
-						switch (param->code)
-						{
-							case BOOTP_OPTION_CODE_SUBNET_MASK:
-							{
-								bootp_oparam_addr_t *addr = (bootp_oparam_addr_t *) param->body;
-								printf("SUBNET Mask: %u.%u.%u.%u\n", addr->addr[0], addr->addr[1], addr->addr[2], addr->addr[3]);
-								break;
-							}
-							case BOOTP_OPTION_CODE_DHCP_SERVER_ID:
-							{
-								bootp_oparam_addr_t *addr = (bootp_oparam_addr_t *) param->body;
-								printf("DHCP Server: %u.%u.%u.%u\n", addr->addr[0], addr->addr[1], addr->addr[2], addr->addr[3]);
-								break;
-							}
-							case BOOTP_OPTION_CODE_DNS_SERVER:
-							{
-								bootp_oparam_addr_t *addr = (bootp_oparam_addr_t *) param->body;
-								printf("DNS Server: %u.%u.%u.%u\n", addr->addr[0], addr->addr[1], addr->addr[2], addr->addr[3]);
-								break;
-							}
-							case BOOTP_OPTION_CODE_ROUTER_OPTION:
-							{
-								bootp_oparam_addr_t *addr = (bootp_oparam_addr_t *) param->body;
-								printf("Router: %u.%u.%u.%u\n", addr->addr[0], addr->addr[1], addr->addr[2], addr->addr[3]);
-								break;
-							}
-							default: break;
-						}
-
-						// Goes to the next option
-						param = (bootp_oparam_t *) &param->body[param->len];
-					}
-
-					break;
-				}
-				case MANAGER_DHCP_STATE_REQUEST:
-				{
-					break;
-				}
-				default: break;
-			}
+			// Calls the DHCP handler
+			manager_handle_dhcp(pkt);
 			break;
 		}
+		default: break;
 	}
 }
 
@@ -125,72 +146,37 @@ void manager_init(void)
 
 void manager_dhcp_send_bootp_request()
 {
-	LOGGER_INFO(label, "Sending DHCP request\n");
-
 	enc28j60_pkt_t *pkt = (enc28j60_pkt_t *) buffer;
-	ip_pkt_t *ip_pkt = (ip_pkt_t *) pkt->eth_pkt.payload;
-	ip_ipv4_body_t *ipv4_body = (ip_ipv4_body_t *) ip_pkt->payload;
-	udp_pkt_t *udp_pkt = (udp_pkt_t *) ipv4_body->payload;
+	ethernet_pkt_t *eth_pkt = (ethernet_pkt_t *) &pkt->eth_pkt;
+	ip_pkt_t *ip_pkt = (ip_pkt_t *) eth_pkt->payload;
 
-	// Gets the pointer to the BOOTP packet
-	bootp_pkt_t *bootp_pkt = (bootp_pkt_t *) udp_pkt->payload;
+	// Prepares the BOOTP packet
+	bootp_pkt_t *bootp_pkt = pkt_builder_bootp((u8 *) &pkt->eth_pkt, broadcast,
+			broadcast, BOOTP_OPCODE_BOOTREQUEST, 60,
+			_BV(BOOTP_FLAG_BROADCAST));
 
-	// Prepares the BOOTP packet itself
-	bootp_pkt->hdr.op = BOOTP_OPCODE_BOOTREQUEST;
-	bootp_pkt->hdr.hlen = 6;
-	bootp_pkt->hdr.flags = BSWAP16(_BV(BOOTP_FLAG_BROADCAST));
-	memcpy(bootp_pkt->body.chaddr, config.mac, 6);
+	// Sets the BOOTP options, such as the type, end and the message type
+	bootp_oparam_t *param = bootp_init_dhcp_options(bootp_pkt);
+	param = bootp_oparam_add_u8(BOOTP_OPTION_CODE_DHCP_MESSAGE_TYPE, DHCP_MESSAGE_TYPE_DHCPDISCOVER, param);
+	param = bootp_oparam_end(param);
 
-	// Gets the pointer to the current option
-	bootp_oparam_t *param = NULL;
-
-	// Sets the magic cookie on the BOOTP options, this will indicate
-	//  that we're using the DHCP extension
-	{
-		bootp_oparam_dhcp_cookie_t *cookie = (bootp_oparam_dhcp_cookie_t *) bootp_pkt->body.payload;
-		memcpy(cookie->values, dhcp_cookie, 4);
-		param = (bootp_oparam_t *) cookie->next;
-	}
-
-	// Sets the DHCP message type
-	param->code = BOOTP_OPTION_CODE_DHCP_MESSAGE_TYPE;
-	param->len = 1;
-	BOOTP_OPARAM_U8(param->body)->val = DHCP_MESSAGE_TYPE_DHCPDISCOVER;
-	param = BOOTP_OPARAM_U8_NEXT(param->body);
-
-	// Calculates the UDP Packet length, by doing: size udp_pkt_t + size bootp_pkt_t + (options start - options end)
-	udp_pkt->hdr.l = BSWAP16(sizeof (udp_pkt_t) + sizeof (bootp_pkt_t) + (((u8 *) param) - bootp_pkt->body.payload));
-
-	/*
-		 Sends the packet
-	*/
-
-	enc28j60_pkt_prepare(pkt, broadcast, ETHERNET_PKT_TYPE_IPV4);
-	enc28j60_ipv4_prepare(ip_pkt, broadcast);
-	enc28j60_ipv4_udp_prepare(ip_pkt, udp_pkt, BOOTP_UDP_SERVER_PORT);
-	enc28j60_ipv4_finish(ip_pkt);
-
+	// Finishes the packet ( Adding checksum ), and sends it to the ENC28J60
+	pkt_builder_bootp_finish(ip_pkt, param);
 	enc28j60_write(pkt, BSWAP16(ip_pkt->hdr.tl));
 }
 
 void manager_dhcp_init(void)
 {
-	enc28j60_pkt_t *pkt = (enc28j60_pkt_t *) buffer;
-	ethernet_pkt_t *eth_pkt = &pkt->eth_pkt;
-	ip_pkt_t *ip_pkt = (ip_pkt_t *) eth_pkt->payload;
-	ip_ipv4_body_t *ipv4_body = (ip_ipv4_body_t *) ip_pkt->payload;
-	udp_pkt_t *udp_pkt = (udp_pkt_t *) ipv4_body->payload;
-	bootp_pkt_t *bootp_pkt = (bootp_pkt_t *) udp_pkt->payload;
-
-	// Sends the BOOTP request
 	manager_dhcp_send_bootp_request();
 	config.dhcp_state = MANAGER_DHCP_STATE_DISCOVER;
 }
 
-static bool link_up = true;
-
 void manager_poll(void)
 {
+	static bool link_up = true;
+
+	// Checks the link status, if it is down, we want to stop polling
+	//  since it is useless
 	if (!enc28j60_is_link_up())
 	{
 		if (link_up)
@@ -208,5 +194,6 @@ void manager_poll(void)
 		link_up = true;
 	}
 
+	// Polls the ENC28J60 for any events
 	enc28j60_poll(buffer);
 }

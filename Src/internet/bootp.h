@@ -2,6 +2,13 @@
 #define _SRC_INTERNET_BOOTP_H
 
 /*********************************************
+ * C Standard Library
+ *********************************************/
+
+#include <stdbool.h>
+#include <string.h>
+
+/*********************************************
  * Project Headers
  *********************************************/
 
@@ -146,6 +153,9 @@ typedef struct __attribute__ (( packed ))
 #define BOOTP_OPARAM_U8(A) ((bootp_oparam_u8_t *) (A))
 #define BOOTP_OPARAM_U8_NEXT(A) (((bootp_oparam_u8_t *) (A))->next)
 
+#define BOOTP_OPARAM_ADDR(A) ((bootp_oparam_addr_t *) (A))
+#define BOOTP_OPARAM_ADDR_NEXT(A) (((bootp_oparam_addr_t *) (A))->next)
+
 /* Packets */
 
 typedef struct __attribute__ (( packed ))
@@ -180,5 +190,14 @@ typedef struct __attribute__ (( packed ))
 /*********************************************
  * Prototypes
  *********************************************/
+
+bootp_oparam_t *bootp_init_dhcp_options(bootp_pkt_t *bootp_pkt);
+
+bootp_oparam_t *bootp_oparam_add_u8(u8 code, u8 val, bootp_oparam_t *param);
+bootp_oparam_t *bootp_oparam_add_addr(u8 code, u8 *addr, bootp_oparam_t *param);
+bootp_oparam_t *bootp_oparam_end(bootp_oparam_t *param);
+
+bootp_oparam_t *bootp_oparam_parser_init_dhcp(bootp_pkt_t *bootp_pkt);
+bootp_oparam_t *bootp_oparam_parser_next(bootp_oparam_t *param);
 
 #endif

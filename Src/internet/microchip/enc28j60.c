@@ -674,7 +674,7 @@ void enc28j60_handle_arp_request(enc28j60_pkt_t *pkt)
 
 		// Checks if our hardware address, or our protocol address is
 		//  present in the packet, and respond accordingly
-		if (memcmp(arp_ipv4_t->tpa, config.ipv4, 4) == 0 || memcmp(arp_ipv4_t->tha, config.mac, 6) == 0)
+		if (memcmp(arp_ipv4_t->tpa, config.ipv4_address, 4) == 0 || memcmp(arp_ipv4_t->tha, config.mac, 6) == 0)
 		{
 			// Prepares the ARP reply, by first copying the source addresses
 			//  into the destination ones
@@ -684,7 +684,7 @@ void enc28j60_handle_arp_request(enc28j60_pkt_t *pkt)
 			// Modifies the opcode, and puts our info into the source addresses
 			arp_pkt->hdr.op = BSWAP16(ARP_PKT_OP_REPLY);
 			memcpy(arp_ipv4_t->sha, config.mac, 6);
-			memcpy(arp_ipv4_t->spa, config.ipv4, 4);
+			memcpy(arp_ipv4_t->spa, config.ipv4_address, 4);
 
 			// Writes the response packet
 			enc28j60_write(pkt, sizeof (arp_pkt_t) + sizeof (arp_payload_ipv4_t));
@@ -725,11 +725,11 @@ void enc28j60_ipv4_prepare(ip_pkt_t *ip_pkt, u8 *ipv4)
 	ip_ipv4_body_t *ip_ipv4 = (ip_ipv4_body_t *) ip_pkt->payload;
 
 	memcpy(ip_ipv4->da, ipv4, 4);
-	memcpy(ip_ipv4->sa, config.ipv4, 4);
+	memcpy(ip_ipv4->sa, config.ipv4_address, 4);
 
 	ip_pkt->hdr.ihl = 5;
 	ip_pkt->hdr.ver = 4;
-	ip_pkt->hdr.ttl = BSWAP16(60);
+	ip_pkt->hdr.ttl = 60;
 	ip_pkt->hdr.tos = (IP_HDR_TOS_PRECEDENCE(IP_HDR_TOS_PRECEDENCE_ROUTINE));
 }
 
@@ -751,7 +751,7 @@ void enc28j60_handle_ipv4(enc28j60_pkt_t *pkt)
 		return;
 
 	// Checks if the IPv4 packet is for us
-	if (memcmp(ip_ipv4->da, config.ipv4, 4) != 0) return;
+	if (memcmp(ip_ipv4->da, config.ipv4_address, 4) != 0) return;
 
 	// Checks the protocol, and calls the required handler
 	switch (ip_pkt->hdr.proto)
