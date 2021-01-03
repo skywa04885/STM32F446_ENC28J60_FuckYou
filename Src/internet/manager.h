@@ -52,6 +52,7 @@ typedef struct
 	u8 ipv4_address[4], ipv4_subnet_mask[4];
 	/* Servers */
 	u8 ipv4_dns_server[4], ipv4_dhcp_server[4], ipv4_router[4];
+	u8 mac_dns_server[6];
 	/* Options */
 	unsigned full_duplex : 1;
 	unsigned ready : 1;
@@ -61,8 +62,14 @@ typedef struct
  * Prototypes
  *********************************************/
 
-void manager_init(void);
-void manager_dhcp_init(void);
-void manager_poll(void);
+void 	manager_init(void);
+void 	manager_dhcp_init(void);
+void 	manager_poll(void);
+
+/*********************************************
+ * Prototypes ( UDP )
+ *********************************************/
+
+u8 		manager_dns_resolve(u8 *buffer, const char *hostname);
 
 #endif

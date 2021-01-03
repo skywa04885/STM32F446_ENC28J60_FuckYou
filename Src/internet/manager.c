@@ -8,12 +8,18 @@ static u8 dhcp_cookie[4] = { 99, 130, 83, 99 };
 static const char *label = "NetMan";
 
 manager_config_t config = {
+		/* State */
 		.dhcp_state = MANAGER_DHCP_STATE_NOT_READY,
+		/* Hardware Configuration */
 		.max_frame_length = 512,
 		.rx_buff_end = 4096,
 		.tx_buff_start = 4098,
+		/* Configuration */
 		.mac = { 0xAA, 0xAA, 0xA4, 0x52, 0x37, 0x3C },
 		.ipv4_address = { 0xFF, 0xFF, 0xFF, 0xFF },
+		/* Servers */
+		.ipv4_dns_server = { 8, 8, 8, 8 },
+		/* Options */
 		.full_duplex = 1,
 		.ready = 0
 };
@@ -55,7 +61,6 @@ void manager_handle_dhcp(enc28j60_pkt_t *pkt)
 		// Parses the given parameters, and sets the configuration variables if already
 		//  possible, since the IPv4 one needs to wait for the ACK
 		bootp_oparam_t *param = bootp_oparam_parser_init_dhcp(bootp_pkt);
-
 		do
 		{
 			switch (param->code)
@@ -65,9 +70,6 @@ void manager_handle_dhcp(enc28j60_pkt_t *pkt)
 				break;
 			case BOOTP_OPTION_CODE_DHCP_SERVER_ID:
 				memcpy(config.ipv4_dhcp_server, ((bootp_oparam_addr_t *) param->body)->addr, 4);
-				break;
-			case BOOTP_OPTION_CODE_DNS_SERVER:
-				memcpy(config.ipv4_dns_server, ((bootp_oparam_addr_t *) param->body)->addr, 4);
 				break;
 			case BOOTP_OPTION_CODE_ROUTER_OPTION:
 				memcpy(config.ipv4_router, ((bootp_oparam_addr_t *) param->body)->addr, 4);
@@ -80,21 +82,42 @@ void manager_handle_dhcp(enc28j60_pkt_t *pkt)
 		manager_send_dhcp_request(config.ipv4_dhcp_server, bootp_pkt->body.yiaddr);
 	} else if (config.dhcp_state == MANAGER_DHCP_STATE_REQUEST)
 	{
-		// Loops over the parameters, and checks if it is NACK or ACK
-		bootp_oparam_t *param = bootp_oparam_parser_init_dhcp(bootp_pkt);
+		//
+		// Parses the DHCP Server Response, and applies the settings
+		//
 
+		bool dhcp_accepted = false;
+
+		// Parses the options, and gets the message type
+		bootp_oparam_t *param = bootp_oparam_parser_init_dhcp(bootp_pkt);
 		do
 		{
+			if (param->code != BOOTP_OPTION_CODE_DHCP_MESSAGE_TYPE) continue;
+
+			if (BOOTP_OPARAM_U8(param)->val == DHCP_MESSAGE_TYPE_DHCPACK) dhcp_accepted = true;
+			else dhcp_accepted = false;
+
+			break;
 		} while ((param = bootp_oparam_parser_next(param)) != NULL);
 
+		// Checks if the DHCP server sent ACK, if not, resend the DHCP
+		//  request and return from this function-
+		if (!dhcp_accepted)
+		{
+			manager_dhcp_init();
+			return;
+		}
 
-		//		// Prints the network information to the serial console
-		//		LOGGER_INFO(
-		//				label, "DHCP IPv4: %u.%u.%u.%u,\n\tSubnet: %u.%u.%u.%u,\n\tDNS: %u.%u.%u.%u\n",
-		//				config.ipv4_address[0], config.ipv4_address[1], config.ipv4_address[2], config.ipv4_address[3],
-		//				config.ipv4_subnet_mask[0], config.ipv4_subnet_mask[1], config.ipv4_subnet_mask[2], config.ipv4_subnet_mask[3],
-		//				config.ipv4_dns_server[0], config.ipv4_dns_server[1], config.ipv4_dns_server[2], config.ipv4_dns_server[3]
-		//		);
+		// Copies our assigned IPv4 address into the config, and sets the
+		//  ready flag
+		memcpy(config.ipv4_address, bootp_pkt->body.yiaddr, 4);
+		config.ready = 1;
+
+		//
+		// Sends the DNS stuff
+		//
+
+		manager_dns_resolve(buffer, "fannst.nl");
 	}
 }
 
@@ -138,10 +161,6 @@ void manager_init(void)
 	LOGGER_INFO(label, "Awaiting LINK\n");
 	while (!enc28j60_is_link_up());
 	LOGGER_INFO(label, "LINK Active\n");
-
-	// Prints the MAC
-	enc28j60_mac_read(buffer);
-	LOGGER_INFO(label, "Device MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5]);
 }
 
 void manager_dhcp_send_bootp_request()
@@ -196,4 +215,50 @@ void manager_poll(void)
 
 	// Polls the ENC28J60 for any events
 	enc28j60_poll(buffer);
+}
+
+/*********************************************
+ * Prototypes ( UDP )
+ *********************************************/
+
+u8 manager_dns_resolve(u8 *buffer, const char *hostname)
+{
+	u8 n = 0;
+
+	//
+	// Sends the DNS Request
+	//
+
+	dns_pkt_t *dns_pkt = pkt_builder_dns(write_buffer, config.mac_dns_server,
+			config.ipv4_dns_server, 60, 0x0000);
+
+	dns_pkt->hdr.qr = 0;
+	dns_pkt->hdr.opcode = DNS_OPCODE_QUERY;
+	dns_pkt->hdr.aa = 0;
+	dns_pkt->hdr.tc = 0;
+	dns_pkt->hdr.rd = 0;
+	dns_pkt->hdr.ra = 0;
+	dns_pkt->hdr.z = 0;
+	dns_pkt->hdr.rcode = 0;
+
+	dns_pkt->hdr.qdcnt = 1;
+	dns_pkt->hdr.ancnt = 0;
+	dns_pkt->hdr.nscnt = 0;
+	dns_pkt->hdr.arcnt = 0;
+
+	dns_add_question(dns_pkt->payload, hostname, DNS_RR_ALL, DNS_QCLASS_ANY);
+
+	//
+	// Reads the DNS response
+	//
+
+	dns_label_seg_t *seg = (dns_label_seg_t *) dns_pkt->payload;
+	do
+	{
+		for (u8 i = 0; i < seg->len; ++i)
+			printf("%c", seg->next[i]);
+		printf("\n");
+	} while ((seg = dns_label_parser_next(seg)) != NULL);
+
+	return n;
 }

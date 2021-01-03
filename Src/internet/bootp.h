@@ -150,11 +150,8 @@ typedef struct __attribute__ (( packed ))
 	u8 		next[0];
 } bootp_oparam_dhcp_cookie_t;
 
-#define BOOTP_OPARAM_U8(A) ((bootp_oparam_u8_t *) (A))
-#define BOOTP_OPARAM_U8_NEXT(A) (((bootp_oparam_u8_t *) (A))->next)
-
-#define BOOTP_OPARAM_ADDR(A) ((bootp_oparam_addr_t *) (A))
-#define BOOTP_OPARAM_ADDR_NEXT(A) (((bootp_oparam_addr_t *) (A))->next)
+#define BOOTP_OPARAM_U8(A) ((bootp_oparam_u8_t *) (A->body))
+#define BOOTP_OPARAM_ADDR(A) ((bootp_oparam_addr_t *) (A->body))
 
 /* Packets */
 

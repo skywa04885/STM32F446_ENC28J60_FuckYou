@@ -61,6 +61,37 @@ bootp_pkt_t *pkt_builder_bootp(u8 *buffer, u8 *ha, u8 *dest4, u8 op, u8 ttl, u16
 	return bootp_pkt;
 }
 
+dns_pkt_t *pkt_builder_dns(u8 *buffer, u8 *ha, u8 *dest4, u8 ttl, u16 id)
+{
+	udp_pkt_t *udp_pkt = pkt_builder_udp(buffer, ha, dest4, ttl, DNS_PORT);
+	dns_pkt_t *dns_pkt = (dns_pkt_t *) udp_pkt->payload;
+
+	dns_pkt->hdr.id = id;
+
+	return dns_pkt;
+}
+
+arp_pkt_t *pkt_builder_arp(u8 *buffer, u8 *ha, u8 *tha, u8 *tpa, u8 ttl, u16 op)
+{
+	ethernet_pkt_t *eth_pkt = pkt_builder_ethernet(buffer, ha, ETHERNET_PKT_TYPE_ARP);
+	arp_pkt_t *arp_pkt = (arp_pkt_t *) eth_pkt->payload;
+	arp_payload_ipv4_t *arp_ipv4 = (arp_payload_ipv4_t *) arp_pkt->payload;
+
+	arp_pkt->hdr.hln = 6;
+	arp_pkt->hdr.pln = 4;
+	arp_pkt->hdr.hrd = BSWAP16(1);
+	arp_pkt->hdr.pro = BSWAP16(ETHERNET_PKT_TYPE_IPV4);
+	arp_pkt->hdr.op = BSWAP16(op);
+
+	memcpy(arp_ipv4->sha, config.mac, 6);
+	memcpy(arp_ipv4->spa, config.ipv4_address, 4);
+
+	memcpy(arp_ipv4->tha, tha, 6);
+	memcpy(arp_ipv4->tpa, tpa, 4);
+
+	return arp_pkt;
+}
+
 void pkt_builder_ip_finish(ip_pkt_t *ip_pkt)
 {
 	ip_pkt->hdr.cs = 0;

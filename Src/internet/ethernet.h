@@ -1,7 +1,15 @@
 #ifndef _SRC_INTERNET_ETHERNET_H
 #define _SRC_INTERNET_ETHERNET_H
 
+/*********************************************
+ * Project Headers
+ *********************************************/
+
 #include "../types.h"
+
+/*********************************************
+ * Data Types
+ *********************************************/
 
 #define ETHERNET_PKT_TYPE_IPV4			0x0800
 #define ETHERNET_PKT_TYPE_ARP			0x0806
