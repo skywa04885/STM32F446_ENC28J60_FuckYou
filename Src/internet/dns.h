@@ -119,6 +119,8 @@ typedef struct __attribute__ (( packed ))
 
 u8 *dns_add_question(u8 *p, const char *qname, dns_qtype_t qtype, dns_qclass_t qclass);
 
+//dns_label_seg_t *
+
 dns_label_seg_t *dns_label_parser_next(dns_label_seg_t *p);
 
 #endif

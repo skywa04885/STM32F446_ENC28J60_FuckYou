@@ -5,22 +5,15 @@ u8 *dns_add_question(u8 *p, const char *qname, dns_qtype_t qtype, dns_qclass_t q
 	u8 start = 0, end = 0;
 
 	dns_label_seg_t *seg = (dns_label_seg_t *) p;
-	for (const char *c = qname; ; ++c)
+	for (const char *c = qname; ; ++c && ++end)
 	{
 		if (*c == '.' || *c == '\0')
 		{
-			seg->len = start - end;
 
-			memcpy((void *) seg->next, (void *) &qname[start], end - start);
-			seg = (dns_label_seg_t *) &seg->next[end - start];
-
-			start = ++end;
 
 			if (*c == '\0') break;
 			continue;
 		}
-
-		++end;
 	}
 
 //

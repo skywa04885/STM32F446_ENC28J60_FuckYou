@@ -42,6 +42,8 @@ typedef enum
 
 typedef struct
 {
+	/* Vendor Info */
+	const char *vstring;
 	/* State */
 	manager_dhcp_state_t dhcp_state;
 	/* Hardware Configuration */
@@ -50,6 +52,7 @@ typedef struct
 	/* Configuration */
 	u8 mac[6];
 	u8 ipv4_address[4], ipv4_subnet_mask[4];
+	u8 ipv4_broadcast[4];
 	/* Servers */
 	u8 ipv4_dns_server[4], ipv4_dhcp_server[4], ipv4_router[4];
 	u8 mac_dns_server[6];

@@ -8,6 +8,8 @@ static u8 dhcp_cookie[4] = { 99, 130, 83, 99 };
 static const char *label = "NetMan";
 
 manager_config_t config = {
+		/* Vendor Info */
+		.vstring = "STM32-VendorNotSpecified",
 		/* State */
 		.dhcp_state = MANAGER_DHCP_STATE_NOT_READY,
 		/* Hardware Configuration */
@@ -17,6 +19,7 @@ manager_config_t config = {
 		/* Configuration */
 		.mac = { 0xAA, 0xAA, 0xA4, 0x52, 0x37, 0x3C },
 		.ipv4_address = { 0xFF, 0xFF, 0xFF, 0xFF },
+		.ipv4_broadcast = { 0xFF, 0xFF, 0xFF, 0xFF },
 		/* Servers */
 		.ipv4_dns_server = { 8, 8, 8, 8 },
 		/* Options */
@@ -108,16 +111,14 @@ void manager_handle_dhcp(enc28j60_pkt_t *pkt)
 			return;
 		}
 
-		// Copies our assigned IPv4 address into the config, and sets the
+		// Copies our assigned IPv4 address into the configuration, and sets the
 		//  ready flag
 		memcpy(config.ipv4_address, bootp_pkt->body.yiaddr, 4);
 		config.ready = 1;
 
-		//
-		// Sends the DNS stuff
-		//
-
-		manager_dns_resolve(buffer, "fannst.nl");
+		// Prints our IP
+		LOGGER_INFO(label, "Ready, IP: %u.%u.%u.%u\n", config.ipv4_address[0],
+				config.ipv4_address[1],config.ipv4_address[2],config.ipv4_address[3]);
 	}
 }
 
@@ -141,6 +142,33 @@ extern void udp_packet_callback(enc28j60_pkt_t *pkt)
 
 			// Calls the DHCP handler
 			manager_handle_dhcp(pkt);
+			break;
+		}
+		case DISCOVER_PKT_PORT:
+		{
+
+			discover_pkt_t *discover_pkt = (discover_pkt_t *) udp_pkt->payload;
+
+			// Checks if the packet is meant for us
+			if (discover_pkt->op != DISCOVER_OPCODE_REQUEST) break;
+			else if (memcmp(discover_pkt->p, discover_pkt_prefix(), 3) != 0) break;
+
+
+			// Builds the response
+			memset(write_buffer, 0, 1000);
+			enc28j60_pkt_t *resp_pkt = (enc28j60_pkt_t *) write_buffer;
+			ip_pkt_t *resp_ip_pkt = (ip_pkt_t *) resp_pkt->eth_pkt.payload;
+
+			// Prepares the discover packet
+			pkt_builer_discover((u8 *) &resp_pkt->eth_pkt,
+					pkt->eth_pkt.hdr.sa, ip_ipv4->sa, 60, config.vstring);
+
+			// Finishes the discover packet, and writes it back
+			pkt_builer_discover_finish(resp_ip_pkt);
+			enc28j60_write(resp_pkt, BSWAP16(resp_ip_pkt->hdr.tl));
+//
+			LOGGER_INFO(label, "Responded to Discover\n");
+
 			break;
 		}
 		default: break;

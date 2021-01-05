@@ -30,7 +30,7 @@ ip_pkt_t *pkt_builder_ip(u8 *buffer, u8 *ha, u8 *dest4, u8 ttl, u8 proto)
 	ip_pkt->hdr.ttl = ttl;
 	ip_pkt->hdr.ihl = 5; 		/* IPv4 Packet Size */
 	ip_pkt->hdr.ver = 4;		/* IPv4 Version */
-	ip_pkt->hdr.tos = (IP_HDR_TOS_PRECEDENCE(IP_HDR_TOS_PRECEDENCE_ROUTINE));
+	ip_pkt->hdr.tos = (IP_HDR_TOS_PRECEDENCE(IP_HDR_TOS_PRECEDENCE_IMMEDIATE));
 
 	return ip_pkt;
 }
@@ -92,6 +92,20 @@ arp_pkt_t *pkt_builder_arp(u8 *buffer, u8 *ha, u8 *tha, u8 *tpa, u8 ttl, u16 op)
 	return arp_pkt;
 }
 
+discover_pkt_t *pkt_builer_discover(u8 *buffer, u8 *ha, u8 *dest4, u8 ttl, const char *vstring)
+{
+	udp_pkt_t *udp_pkt = pkt_builder_udp(buffer, ha, dest4, ttl, DISCOVER_PKT_PORT);
+	discover_pkt_t *discover_pkt = (discover_pkt_t *) udp_pkt->payload;
+
+	discover_pkt->op = DISCOVER_OPCODE_RESPONSE;
+
+	discover_pkt->vstrl = strlen(vstring);
+	memcpy(discover_pkt->vstr, vstring, discover_pkt->vstrl);
+	memcpy(discover_pkt->p, discover_pkt_prefix(), 3);
+
+	return discover_pkt;
+}
+
 void pkt_builder_ip_finish(ip_pkt_t *ip_pkt)
 {
 	ip_pkt->hdr.cs = 0;
@@ -109,12 +123,27 @@ void pkt_builder_udp_finish(ip_pkt_t *ip_pkt, udp_pkt_t *udp_pkt)
 void pkt_builder_bootp_finish(ip_pkt_t *ip_pkt, bootp_oparam_t *lparam)
 {
 	ip_ipv4_body_t *ipv4_body = (ip_ipv4_body_t *) ip_pkt->payload;
-	udp_pkt_t *udp_pkt = (udp_pkt_t *) ipv4_body->payload;\
+	udp_pkt_t *udp_pkt = (udp_pkt_t *) ipv4_body->payload;
 	bootp_pkt_t *bootp_pkt = (bootp_pkt_t *) udp_pkt->payload;
 
 	// Calculates the UDP Packet length, by doing: size udp_pkt_t + size bootp_pkt_t + (options start - options end)
 	udp_pkt->hdr.l = BSWAP16(sizeof (udp_pkt_t) + sizeof (bootp_pkt_t) + (((u8 *) lparam) - bootp_pkt->body.payload));
-	ip_pkt->hdr.tl = BSWAP16((ip_pkt->hdr.ihl * 4) + sizeof (udp_pkt_t) + BSWAP16(udp_pkt->hdr.l));
+	ip_pkt->hdr.tl = BSWAP16((ip_pkt->hdr.ihl * 4) + BSWAP16(udp_pkt->hdr.l));
+
+	// Creates the checksums
+	pkt_builder_udp_finish(ip_pkt, udp_pkt);
+	pkt_builder_ip_finish(ip_pkt);
+}
+
+void pkt_builer_discover_finish(ip_pkt_t *ip_pkt)
+{
+	ip_ipv4_body_t *ipv4_body = (ip_ipv4_body_t *) ip_pkt->payload;
+	udp_pkt_t *udp_pkt = (udp_pkt_t *) ipv4_body->payload;
+	discover_pkt_t *discover_pkt = (discover_pkt_t *) udp_pkt->payload;
+
+	// Calculates the UDP Packet length, by doing: size udp_pkt_t + size discover_pkt_t + length vendor string
+	udp_pkt->hdr.l = BSWAP16(sizeof (udp_pkt_t) + sizeof (discover_pkt_t) + discover_pkt->vstrl);
+	ip_pkt->hdr.tl = BSWAP16((ip_pkt->hdr.ihl * 4) + BSWAP16(udp_pkt->hdr.l));
 
 	// Creates the checksums
 	pkt_builder_udp_finish(ip_pkt, udp_pkt);

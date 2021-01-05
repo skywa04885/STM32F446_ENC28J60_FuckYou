@@ -750,8 +750,9 @@ void enc28j60_handle_ipv4(enc28j60_pkt_t *pkt)
 	if (checksum_oc16((u16 *) ip_pkt, (ip_pkt->hdr.ihl * 2)) != 0xFFFF)
 		return;
 
-	// Checks if the IPv4 packet is for us
-	if (memcmp(ip_ipv4->da, config.ipv4_address, 4) != 0) return;
+	// Checks if the packet matches our IPv4, or is an broadcast packet
+	if (memcmp(ip_ipv4->da, config.ipv4_address, 4) != 0
+			&& memcmp(ip_ipv4->da, config.ipv4_broadcast, 4) != 0) return;
 
 	// Checks the protocol, and calls the required handler
 	switch (ip_pkt->hdr.proto)
